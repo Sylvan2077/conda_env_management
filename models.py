@@ -1,15 +1,15 @@
 from pydantic import BaseModel
 from typing import List
 
-class InitOverlayEnvRequest(BaseModel):
-    """初始化虚环境请求"""
-    pass
-
 class CreateOverlayEnvRequest(BaseModel):
     """创建虚环境请求"""
     env_id: str
     module_ids: List[str]
-    conda_env_name: str
+
+class MountOverlayEnvRequest(BaseModel):
+    """挂载虚环境请求"""
+    env_id: str
+    module_ids: List[str]
 
 class UnmountOverlayEnvRequest(BaseModel):
     """卸载虚环境请求"""

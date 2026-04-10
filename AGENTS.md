@@ -59,23 +59,22 @@ project/
 ```
 
 ### 3. 接口设计
-- **POST /init_overlay_env**：初始化虚环境目录结构（base、modules）。
-接收参数：无
-返回参数：env_id和base绝对路径
-具体实现：1.调用workmanagement_service外部服务，创建以uuid为目录名的虚环境总体目录，即env_id；
-        2.总体目录下创建base目录，用于存储全局基础conda环境（只读 lower）；
-        3.总体目录下创建modules目录，用于存储所有模块的overlay目录。
-        4.接口返回env_id和base绝对路径。
 
-- **POST /create_overlay_env**：创建虚环境目录（upper、work、merge、modules/{module_id}）。
-接收参数：env_id、module_ids（模块id列表）、conda_env_name（conda环境名称）
+- **POST /create_overlay_env**：创建虚环境目录（upper、work、merge、base、modules/{module_id}）。
+接收参数：env_id(由外部流程服务提供)、module_ids（模块id列表）
 返回参数：返回成功或失败
-具体实现：1.根据env_id和module_id，创建modules目录下的子目录，即module_id；
-        2.子目录下创建upper、work、merge目录，用于存储当前模块的新增/修改文件、overlay 工作目录（必须为空）和视图层（merged view）。
-        3.使用chmod -R 777权限，确保module_id目录所有用户都有读写权限。
-        4.在base目录下创建conda环境，名称为conda_env_name。（目前虚环境在外部功能测试服务functiontest_service中创建）
-        5.使用mount overlayfs挂载upper 、work、merge、base目录。
+具体实现：1.根据env_id，在目录下创建base目录，用于存储全局基础conda环境（只读 lower）；
+        2.env_id目录下创建modules目录，用于存储所有模块的overlay目录。
+        3.根据module_ids，创建modules目录下的子目录，即module_id目录；
+        4.每个module_id子目录下创建upper、work、merge目录;
+        5.使用chmod -R 777权限，确保module_id目录所有用户都有读写权限。
         6.接口返回成功或失败。
+
+- **POST /mount_overlay_env**：挂载虚环境目录（upper、work、merge）。
+接收参数：env_id、module_ids（模块id列表）
+返回参数：返回成功或失败
+具体实现：1.对每个module_id子目录下使用mount overlayfs挂载upper 、work、merge、base目录。
+        2.接口返回成功或失败。
 
 - **DELETE /unmount_overlay_env**：卸载虚环境目录（upper、work、merge）。
 接收参数：env_id、module_ids（模块id列表）
@@ -91,5 +90,5 @@ project/
 - **并发**：每个 process_task_id 独立目录，可同时跑多个 workflow。
 - **注意**：
   - 包冲突：如果下游模块安装了不同版本同一包，overlay 会以后面的 lower 为准（需在 DAG 设计时保证兼容）。
-  - 清理：任务结束后可 `umount` 或删除整个 `/tmp/workflows/{process_task_id}`。
+  - 清理：任务结束后可 `unmount` 或删除整个 `env_id` 目录。
   - 生产环境建议加日志（loguru）、错误重试、超时机制。

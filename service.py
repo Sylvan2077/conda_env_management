@@ -1,23 +1,22 @@
 import os
-import uuid
 import asyncio
 import subprocess
 from pathlib import Path
 from typing import List, Dict, Optional
 from fastapi import HTTPException
 import shutil
+from config import config
 
 class OverlayService:
     def __init__(self):
-        self.base_path = Path("/scnsqap")
+        self.base_path = config.workdir
         self.base_path.mkdir(parents=True, exist_ok=True)
     
-    async def init_overlay_env(self) -> str:
-        """初始化虚环境目录结构"""
-        env_id = str(uuid.uuid4())
+    async def create_overlay_env(self, env_id: str, module_ids: List[str]) -> Dict:
+        """创建虚环境目录（upper、work、merge、base、modules/{module_id}）"""
         env_path = self.base_path / env_id
         
-        # 创建基础目录结构
+        # 创建环境目录
         env_path.mkdir(parents=True, exist_ok=True)
         
         # 创建base目录（全局基础conda环境）
@@ -27,18 +26,6 @@ class OverlayService:
         # 创建modules目录
         modules_dir = env_path / "modules"
         modules_dir.mkdir(exist_ok=True)
-        
-        return env_id
-    
-    async def create_overlay_env(self, env_id: str, module_ids: List[str], conda_env_name: str) -> Dict:
-        """创建虚环境目录（upper、work、merge）"""
-        env_path = self.base_path / env_id
-        
-        if not env_path.exists():
-            raise HTTPException(status_code=404, detail=f"环境 {env_id} 不存在")
-        
-        modules_dir = env_path / "modules"
-        base_dir = env_path / "base"
         
         results = {}
         
@@ -55,14 +42,36 @@ class OverlayService:
             
             # 设置权限
             os.chmod(module_path, 0o777)
+            results[module_id] = {
+                "upper_dir": str(upper_dir),
+                "work_dir": str(work_dir),
+                "merge_dir": str(merge_dir),
+                "status": "created"
+            }
+        
+        return results
+    
+    async def mount_overlay_env(self, env_id: str, module_ids: List[str]) -> Dict:
+        """挂载虚环境目录（upper、work、merge）"""
+        env_path = self.base_path / env_id
+        
+        if not env_path.exists():
+            raise HTTPException(status_code=404, detail=f"环境 {env_id} 不存在")
+        
+        modules_dir = env_path / "modules"
+        base_dir = env_path / "base"
+        
+        results = {}
+        
+        for module_id in module_ids:
+            module_path = modules_dir / module_id
             
-            # 在base目录下创建conda环境（这里假设在外部服务中创建，我们先创建目录）
-            # 实际项目中需要调用functiontest_service创建conda环境
-            conda_env_path = base_dir / conda_env_name
-            if not conda_env_path.exists():
-                conda_env_path.mkdir(parents=True, exist_ok=True)
-                # 这里应该调用外部服务创建conda环境
-                # await self._create_conda_env(base_dir, conda_env_name)
+            if not module_path.exists():
+                raise HTTPException(status_code=404, detail=f"模块 {module_id} 不存在")
+            
+            upper_dir = module_path / "upper"
+            work_dir = module_path / "work"
+            merge_dir = module_path / "merge"
             
             # 使用mount overlayfs挂载
             try:
@@ -74,8 +83,6 @@ class OverlayService:
                     "status": "mounted"
                 }
             except Exception as e:
-                # 清理已创建的目录
-                shutil.rmtree(module_path, ignore_errors=True)
                 raise HTTPException(status_code=500, detail=f"模块 {module_id} 挂载失败: {str(e)}")
         
         return results
@@ -155,6 +162,3 @@ class OverlayService:
             "-y", "--quiet", "python=3.8"
         ]
         subprocess.run(conda_cmd, check=True, capture_output=True)
-
-# 创建全局服务实例
-overlay_service = OverlayService()

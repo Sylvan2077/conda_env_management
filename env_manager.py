@@ -2,6 +2,7 @@ import subprocess
 import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
+from config import config
 
 
 class OverlayTool:
@@ -14,7 +15,7 @@ class OverlayTool:
             task_id: 任务唯一标识符
         """
         self.task_id = task_id
-        self.root_dir = Path(f"/scnsqap/{task_id}")
+        self.root_dir = config.workdir / task_id
         self.root_dir.mkdir(parents=True, exist_ok=True)
     
     def init_directory_structure(self):
