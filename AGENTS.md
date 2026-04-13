@@ -1,13 +1,13 @@
 
 # 本项目为conda-overlayfs虚环境管理服务
 
-## 背景：
+### 1. 背景：
 - FastAPI 作为 API 层，负责接收/管理多个**测试流程任务**。  
 - 每个 workflow task 维护**一个主 conda 环境**，但内部包含多个**模块**（module），模块间存在**有向无环图（DAG）依赖**。  
 - 每个模块需要安装自己的 conda 包，且**安装操作基于“下游模块”的虚环境**（这里的“下游模块”指该模块所**依赖的前置模块**，即其依赖的模块的 merge_dir 作为 lower layer）。  
 - 核心优化：**使用 overlayfs（写时复制）** 减少每个模块实际安装的包数量，只在 upper_dir 写入差异，极大加速安装并节省磁盘。
 
-## 所需实现：
+### 2. 技术实现：
 本项目只实现对conda虚环境的管理，不实现具体流程测试及DAG管理。
 **overlayfs 思路**：  
 - `lower_dir`（只读）：下游模块已合并的 merge_dir（或 base 环境）。  
@@ -17,7 +17,7 @@
 
 下面给出**完整可落地的实现方案**（Python + FastAPI），包含关键代码。
 
-### 1. 环境准备（服务器侧）
+### 3. 环境准备（服务器侧）
 
 - 服务器为centos7，使用python语言的mount模块实现原生overlayfs挂载
 - 数据库使用postgresql
@@ -43,11 +43,23 @@ text/scnsqap/
     └── logs/                                      # 可选：任务日志
 关键说明：
 
-只对 merge/ 目录执行 conda install、python 等操作。
-upper/ 只保存当前模块的增量变化 → 大幅减少磁盘占用和安装时间。
-work/ 目录必须在挂载前为空，且属于同一个文件系统（推荐放在同一磁盘分区）。
+- 只对 merge/ 目录执行 conda install、python 等操作。
+- upper/ 只保存当前模块的增量变化 → 大幅减少磁盘占用和安装时间。
+- work/ 目录必须在挂载前为空，且属于同一个文件系统（推荐放在同一磁盘分区）。
+- 保留每个模块独立 upper + merge 的结构更好，理由：
+逻辑最清晰。
+每个模块的 merge/ 可以直接作为下一个模块的 lower（不用每次重建长 lowerdir 字符串）。
+避免 CentOS 7 内核 stacking depth 限制（老内核对深层 overlay 支持较差）。
+调试容易：想看某个模块的环境，直接进入它的 merge/ 即可。
+- 如果整个任务只用 一个 merge + 多个 upper：
+所有模块的 conda install 都会写到同一个 upper 层。
+无法清晰区分“哪个模块新增了哪些包”。
+增量优化效果大幅减弱（最差情况下接近把所有包都装到一个大环境里）。
+多个 upper/，但 OverlayFS 一次 mount 只允许 1 个 upperdir（可写层）。
+如果在同一个 merge/ 上为不同模块依次 conda install，所有安装操作最终都会落到同一个 writable upper（或你每次 remount 时切换 upper）。
+如果想保留增量，就必须为每个模块动态 umount + remount 一个新的 overlay（把前面所有 upper 作为 lower），这会导致代码非常复杂、频繁 mount 操作、容易出错。
 
-### 2. 项目结构
+### 4. 项目结构
 ```
 project/
 ├── main.py                 # FastAPI 入口
@@ -58,7 +70,7 @@ project/
 └── ...
 ```
 
-### 3. 接口设计
+### 5. 接口设计
 
 - **POST /create_overlay_env**：创建虚环境目录（upper、work、merge、base、modules/{module_id}）。
 接收参数：env_id(由外部流程服务提供)、module_ids（模块id列表）
@@ -84,7 +96,11 @@ project/
         3.使用rm -rf删除modules目录下的子目录、base目录。
         4.接口返回成功或失败。
 
-### 4. 优势 & 注意事项
+### 6.接口调用流程
+
+- 在外部流程服务中，完成`创建虚环境目录接口`后，在base目录创建虚环境，然后继续调用接下来的`挂载虚环境目录接口`，完成挂载，后续功能测试只操作merge目录，最后清理环境步骤调用`卸载虚环境目录接口`。
+
+### 7. 最终优势 & 注意事项
 - **性能**：每个模块只安装**自己新增**的包，下游包通过 overlay 直接可见，安装速度提升 5-10 倍（实测取决于包大小）。
 - **磁盘**：upper_dir 只存差异，节省 70%+ 空间。
 - **并发**：每个 process_task_id 独立目录，可同时跑多个 workflow。
