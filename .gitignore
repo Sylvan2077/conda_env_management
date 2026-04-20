@@ -1,2 +1,59 @@
 /__pycache__/
 /overlay/
+__pycache__/
+.vscode
+
+# Python
+*.pyc
+*.pyo
+*.pyd
+__pycache__/
+.pytest_cache/
+.tox/
+.venv/
+venv/
+env/
+
+# Editor
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Configuration
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Build
+build/
+dist/
+*.egg-info/
+
+# Test
+coverage/
+.coverage
+.coverage.*
+
+# Documentation
+*.rst
+*.md
+
+# Temporary files
+*.tmp
+*.temp
