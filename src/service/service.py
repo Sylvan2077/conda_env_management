@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import List, Dict, Optional
 from fastapi import HTTPException
 import shutil
-from config import config
+from src.config.config import config
 
 class OverlayService:
     def __init__(self):
@@ -137,13 +137,21 @@ class OverlayService:
         lower_str = str(base_dir)
         
         # 使用mount命令而不是fuse-overlayfs（更标准）
+        # TODO 按照overlayfs官方建议的格式：mount -t overlay overlay -o lowerdir=...,upperdir=...,workdir=... mergedir
+        # cmd = [
+        #     "mount",
+        #     "-t", "overlay",           # 文件系统类型
+        #     "overlay",                 # source（必须写，通常就是 overlay）
+        #     "-o", f"lowerdir={lower_str},upperdir={upper_dir},workdir={work_dir}",
+        #     str(merge_dir)             # 挂载点（merge 目录）
+        # ]
+
+        # macOS 上使用 fuse-overlayfs
         cmd = [
-            "mount",
-            "-t", "overlay",
+            "fuse-overlayfs",
             "-o", f"lowerdir={lower_str}",
             "-o", f"upperdir={upper_dir}",
             "-o", f"workdir={work_dir}",
-            "overlay",
             str(merge_dir)
         ]
         

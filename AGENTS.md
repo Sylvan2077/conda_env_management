@@ -27,7 +27,8 @@
 每个流程任务使用 UUID 生成的 process_task_id 作为目录名（推荐使用 uuid.uuid4()）。
 单个任务的目录结构如下（以 process_task_id = "a1b2c3d4-..." 为例）：
 
-text/scnsqap/
+```
+/scnsqap/
 └── a1b2c3d4-e5f6-7890-abcd-ef1234567890/          # process_task_id
     ├── base/                                      # 全局基础 conda 环境（只读 lower）
     ├── modules/                                   # 所有模块的 overlay 目录
@@ -41,6 +42,8 @@ text/scnsqap/
     │   │   └── merge/
     │   └── ...
     └── logs/                                      # 可选：任务日志
+```
+
 关键说明：
 
 - 只对 merge/ 目录执行 conda install、python 等操作。

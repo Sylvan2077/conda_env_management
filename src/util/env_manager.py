@@ -2,7 +2,7 @@ import subprocess
 import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
-from config import config
+from src.config.config import config
 
 
 class OverlayTool:

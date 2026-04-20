@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException
 from typing import List, Optional
-from models import CreateOverlayEnvRequest, MountOverlayEnvRequest, UnmountOverlayEnvRequest
-from service import OverlayService
+from src.model.models import CreateOverlayEnvRequest, MountOverlayEnvRequest, UnmountOverlayEnvRequest
+from src.service.service import OverlayService
 overlay_service = OverlayService()
 router = APIRouter()
 

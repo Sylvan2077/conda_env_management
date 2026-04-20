@@ -1,6 +1,6 @@
 from fastapi import FastAPI
-from overlay_api import router
-from doc_api import doc_router
+from src.api.overlay_api import router
+from src.api.doc_api import doc_router
 
 app = FastAPI(
     title="conda-overlayfs 虚环境管理服务",
