@@ -7,7 +7,11 @@ doc_router = APIRouter()
 
 @doc_router.get("/docs", include_in_schema=False)
 async def custom_swagger_ui_html():
-    """自定义Swagger UI页面"""
+    """
+    自定义Swagger UI页面
+    返回:
+        HTMLResponse: Swagger UI页面内容。
+    """
     return get_swagger_ui_html(
         openapi_url="/openapi.json",
         title="conda-overlayfs API文档",
@@ -17,7 +21,11 @@ async def custom_swagger_ui_html():
 
 @doc_router.get("/redoc", include_in_schema=False)
 async def redoc_html():
-    """ReDoc文档页面"""
+    """
+    ReDoc文档页面
+    返回:
+        HTMLResponse: ReDoc文档页面内容。
+    """
     return get_redoc_html(
         openapi_url="/openapi.json",
         title="conda-overlayfs API文档",
@@ -25,7 +33,11 @@ async def redoc_html():
 
 @doc_router.get("/openapi.json", include_in_schema=False)
 async def custom_openapi():
-    """自定义OpenAPI架构"""
+    """
+    自定义OpenAPI架构
+    返回:
+        Dict[str, Any]: OpenAPI架构JSON数据。
+    """
     from main import app
     if app.openapi_schema:
         return app.openapi_schema

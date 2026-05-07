@@ -1,5 +1,6 @@
 from fastapi import FastAPI
-from src.api.overlay_api import router
+from src.api.overlay_api import overlay_router
+from src.api.task_api import task_router
 from src.api.doc_api import doc_router
 
 app = FastAPI(
@@ -13,6 +14,7 @@ app = FastAPI(
 )
 
 # 包含API路由
-app.include_router(router)
+app.include_router(overlay_router)
+app.include_router(task_router)
 # 包含文档API路由
 app.include_router(doc_router)

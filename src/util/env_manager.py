@@ -64,8 +64,7 @@ class OverlayTool:
         base_conda_path = self.root_dir / "base" / conda_env_name
         if not base_conda_path.exists():
             base_conda_path.mkdir(parents=True, exist_ok=True)
-            # 这里应该调用functiontest_service创建conda环境
-            # self._create_conda_env(conda_env_name)
+            self._create_conda_env(conda_env_name)
             logger.info(f"Created conda environment {conda_env_name} for module {module_id}")
         
         # 挂载overlayfs
@@ -134,12 +133,10 @@ class OverlayTool:
         # 使用mount命令而不是fuse-overlayfs（更标准）
         cmd = [
             "mount",
-            "-t", "overlay",
-            "-o", f"lowerdir={lower_str}",
-            "-o", f"upperdir={upper_dir}",
-            "-o", f"workdir={work_dir}",
-            "overlay",
-            str(merge_dir)
+            "-t", "overlay",           # 文件系统类型
+            "overlay",                 # source（必须写，通常就是 overlay）
+            "-o", f"lowerdir={lower_str},upperdir={upper_dir},workdir={work_dir}",
+            str(merge_dir)             # 挂载点（merge 目录）
         ]
         
         result = subprocess.run(cmd, check=True, capture_output=True)
@@ -163,7 +160,6 @@ class OverlayTool:
     
     def _create_conda_env(self, env_name: str):
         """创建conda环境（实际项目中需要调用外部服务）"""
-        # 这里只是模拟，实际应该调用functiontest_service
         conda_cmd = [
             "conda", "create", "--prefix", str(self.root_dir / "base" / env_name),
             "-y", "--quiet", "python=3.8"
