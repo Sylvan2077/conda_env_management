@@ -3,7 +3,8 @@ import os
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from src.config.config import config
-
+from src.util.log_manager import LoggerManager
+logger = LoggerManager(__name__)
 
 class OverlayTool:
     """overlayfs + conda 核心管理器"""
@@ -32,7 +33,8 @@ class OverlayTool:
         # 创建modules目录
         modules_dir = self.root_dir / "modules"
         modules_dir.mkdir(exist_ok=True)
-        
+        logger.success(f"Initialized directory structure for task {self.task_id}")
+
         return str(self.root_dir)
     
     def create_overlay_dirs(self, module_id: str, conda_env_name: str) -> Dict[str, str]:
@@ -64,10 +66,11 @@ class OverlayTool:
             base_conda_path.mkdir(parents=True, exist_ok=True)
             # 这里应该调用functiontest_service创建conda环境
             # self._create_conda_env(conda_env_name)
+            logger.info(f"Created conda environment {conda_env_name} for module {module_id}")
         
         # 挂载overlayfs
         self._mount_overlayfs(upper_dir, work_dir, merge_dir, base_conda_path)
-        
+        logger.success(f"Mounted overlayfs for module {module_id} at {merge_dir}")
         return {
             "upper_dir": str(upper_dir),
             "work_dir": str(work_dir),
@@ -87,6 +90,7 @@ class OverlayTool:
         module_dir = self.root_dir / "modules" / module_id
         
         if not module_dir.exists():
+            logger.warning(f"Module directory {module_dir} does not exist for unmounting")
             return False
         
         merge_dir = module_dir / "merge"
@@ -98,9 +102,10 @@ class OverlayTool:
             # 删除模块目录
             import shutil
             shutil.rmtree(module_dir, ignore_errors=True)
-            
+            logger.success(f"Unmounted overlayfs for module {module_id} at {merge_dir}")
             return True
         except Exception:
+            logger.error(f"Failed to unmount overlayfs for module {module_id} at {merge_dir}")
             return False
     
     def cleanup_task(self):
@@ -108,8 +113,10 @@ class OverlayTool:
         try:
             import shutil
             shutil.rmtree(self.root_dir, ignore_errors=True)
+            logger.success(f"Cleaned up task directory for task {self.task_id}")
             return True
         except Exception:
+            logger.error(f"Failed to clean up task directory for task {self.task_id}")
             return False
     
     def _mount_overlayfs(self, upper_dir: Path, work_dir: Path, merge_dir: Path, base_dir: Path):
@@ -136,7 +143,9 @@ class OverlayTool:
         ]
         
         result = subprocess.run(cmd, check=True, capture_output=True)
+        logger.info(f"Mount command output: {result.stdout.decode()}")
         if result.returncode != 0:
+            logger.error(f"Failed to mount overlayfs for module at {merge_dir}: {result.stderr.decode()}")
             raise RuntimeError(f"overlayfs挂载失败: {result.stderr.decode()}")
     
     def _unmount_overlayfs(self, merge_dir: Path):
@@ -147,7 +156,9 @@ class OverlayTool:
         """
         # 使用unmount -l强制卸载
         result = subprocess.run(["umount", "-l", str(merge_dir)], check=True, capture_output=True)
+        logger.info(f"Unmount command output: {result.stdout.decode()}")
         if result.returncode != 0:
+            logger.error(f"Failed to unmount overlayfs for module at {merge_dir}: {result.stderr.decode()}")
             raise RuntimeError(f"overlayfs卸载失败: {result.stderr.decode()}")
     
     def _create_conda_env(self, env_name: str):
@@ -158,3 +169,4 @@ class OverlayTool:
             "-y", "--quiet", "python=3.8"
         ]
         subprocess.run(conda_cmd, check=True, capture_output=True)
+        logger.success(f"Created conda environment {env_name}")
