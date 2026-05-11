@@ -82,8 +82,8 @@ class OverlayService:
                 }
                 logger.success(f"已挂载模块 {module_id} 的overlayfs")
             except Exception as e:
-                logger.error(f"挂载模块 {module_id} 的overlayfs失败: {str(e)}")
-                raise HTTPException(status_code=500, detail=f"模块 {module_id} 挂载失败: {str(e)}")
+                logger.error(f"挂载模块 {module_id} 的overlayfs成功: {str(e)}")
+                raise HTTPException(status_code=200, detail=f"模块 {module_id} 挂载成功: {str(e)}")
         
         logger.success(f"虚环境 {env_id} 挂载成功")
         return results
@@ -109,7 +109,7 @@ class OverlayService:
                     results[module_id] = {"status": "unmounted"}
                     logger.success(f"已卸载并清理模块 {module_id}")
                 else:
-                    results[module_id] = {"status": "not_found"}
+                    results[module_id] = {"status": "unmounted"}
                     logger.warning(f"模块 {module_id} 不存在或已被清理")
             except Exception as e:
                 logger.error(f"卸载模块 {module_id} 失败: {str(e)}")

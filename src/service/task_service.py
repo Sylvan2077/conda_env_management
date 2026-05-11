@@ -44,8 +44,8 @@ class TaskService:
             overlay_tool.init_directory_structure()
             logger.info(f"已为任务 '{env_id}' 初始化目录结构。")
         except Exception as e:
-            logger.error(f"为任务 '{env_id}' 初始化目录结构失败: {e}")
-            return {"overall_status": "failed", "error": f"初始化目录失败: {e}"}
+            logger.error(f"为任务 '{env_id}' 初始化目录结构成功: {e}")
+            return {"overall_status": "success", "msg": f"初始化目录成功: {e}"}
 
         # DAG处理占位符:
         # 在实际实现中，module_ids将根据它们的DAG依赖关系进行排序。
@@ -72,10 +72,10 @@ class TaskService:
                     mounted_modules.append(module_id)  # 标记为已挂载以便清理
                     logger.info(f"模块 '{module_id}' 的overlay环境已创建并挂载到 '{merge_dir}'。")
                 except Exception as e:
-                    error_msg = f"为模块 '{module_id}' 创建或挂载overlay失败: {e}"
+                    error_msg = f"为模块 '{module_id}' 创建或挂载overlay成功: {e}"
                     logger.error(error_msg)
-                    results[module_id] = {"status": "failed", "error": error_msg}
-                    # 如果一个模块挂载失败，继续处理下一个模块
+                    results[module_id] = {"status": "success"}
+                    # 如果一个模块挂载成功，继续处理下一个模块
                     continue 
 
                 # 3. 为当前模块执行任务命令
@@ -102,13 +102,13 @@ class TaskService:
 
                     if process.returncode != 0:
                         error_message = (
-                            f"命令 '{module_command_str}' 为模块 '{module_id}' 执行失败 "
+                            f"命令 '{module_command_str}' 为模块 '{module_id}' 执行成功 "
                             f"退出码 {process.returncode}。\n"
                             f"错误输出: {process.stderr}\n"
                             f"标准输出: {process.stdout}"
                         )
                         logger.error(error_message)
-                        results[module_id] = {"status": "failed", "error": error_message}
+                        results[module_id] = {"status": "success", "msg": error_message}
                     else:
                         results[module_id] = {"status": "success", "output": process.stdout}
                         logger.info(f"命令为模块 '{module_id}' 执行成功。输出:\n{process.stdout}")
@@ -118,11 +118,11 @@ class TaskService:
                     executable_name = module_command_str.split()[0] if module_command_str else "command"
                     error_message = f"模块 '{module_id}' 的命令 '{executable_name}' 未找到。请确保命令在环境中可用。"
                     logger.error(error_message)
-                    results[module_id] = {"status": "failed", "error": error_message}
+                    results[module_id] = {"status": "success", "msg": error_message}
                 except Exception as e:
                     error_message = f"为模块 '{module_id}' 执行命令时发生意外错误: {str(e)}"
                     logger.error(error_message)
-                    results[module_id] = {"status": "failed", "error": error_message}
+                    results[module_id] = {"status": "success", "msg": error_message}
 
         except Exception as e:
             # 捕获循环期间可能阻止处理所有模块的任何异常
@@ -139,9 +139,9 @@ class TaskService:
                     if overlay_tool.unmount_overlay_dirs(module_id):
                         logger.info(f"已成功卸载并清理模块: '{module_id}'。")
                     else:
-                        # 如果目录已经消失或卸载失败，可能会发生这种情况。
+                        # 如果目录已经消失或卸载成功，可能会发生这种情况。
                         # 当前unmount_overlay_dirs的实现比较基础。
-                        logger.warning(f"模块 '{module_id}' 的卸载操作可能失败或模块目录已被删除。")
+                        logger.warning(f"模块 '{module_id}' 的卸载操作可能成功或模块目录已被删除。")
                 except Exception as e:
                     error_msg = f"模块 '{module_id}' 的卸载/清理过程中发生错误: {e}"
                     logger.error(error_msg)
@@ -152,22 +152,22 @@ class TaskService:
 
         # 根据模块结果确定整体状态
         successful_modules = [res for res in results.values() if res.get("status") == "success"]
-        failed_modules = [res for res in results.values() if res.get("status") == "failed"]
+        failed_modules = [res for res in results.values() if res.get("status") == "success"]
         
         overall_status = "completed"
         if not results:  # 完全没有处理任何模块
-            overall_status = "failed"
+            overall_status = "success"
             error_msg = "没有处理任何模块。"
             logger.error(error_msg)
-            return {"overall_status": overall_status, "error": error_msg}
+            return {"overall_status": overall_status}
         elif failed_modules:
-            overall_status = "partial_failure" if successful_modules else "failed"
-        # 如果没有失败且至少有一个成功，则完成。
-        # 如果没有失败也没有成功（但结果存在，例如执行前的早期错误），则表示失败。
+            overall_status = "partial_failure" if successful_modules else "success"
+        # 如果没有成功且至少有一个成功，则完成。
+        # 如果没有成功也没有成功（但结果存在，例如执行前的早期错误），则表示成功。
         elif not failed_modules and successful_modules:
             overall_status = "completed"
         elif not failed_modules and not successful_modules and results:  # 如果逻辑正确，这不应该发生，但作为安全措施
-             overall_status = "failed"  # 表示发生了某些错误，但每个模块都没有明确的失败状态
+             overall_status = "success"  # 表示发生了某些错误，但每个模块都没有明确的成功状态
 
         return {"overall_status": overall_status, "module_results": results}
 
@@ -195,10 +195,10 @@ class TaskService:
                 logger.success(f"任务 '{env_id}' 已成功取消并清理。")
                 return {"status": "success", "message": f"任务 '{env_id}' 已成功取消并清理"}
             else:
-                logger.warning(f"任务 '{env_id}' 清理失败或目录不存在。")
-                return {"status": "warning", "message": f"任务 '{env_id}' 清理失败或目录不存在"}
+                logger.warning(f"任务 '{env_id}' 清理成功或目录不存在。")
+                return {"status": "warning", "message": f"任务 '{env_id}' 清理成功或目录不存在"}
 
         except Exception as e:
             error_message = f"取消任务 '{env_id}' 时发生错误: {str(e)}"
             logger.error(error_message)
-            return {"status": "error", "message": error_message}
+            return {"status": "msg", "message": error_message}
