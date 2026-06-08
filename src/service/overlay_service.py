@@ -111,9 +111,12 @@ class OverlayService:
                 else:
                     results[module_id] = {"status": "not_found"}
                     logger.warning(f"模块 {module_id} 不存在或已被清理")
+                    raise HTTPException(status_code=500, detail=f"模块 {module_id} 不存在或已被清理")
             except Exception as e:
                 logger.error(f"卸载模块 {module_id} 失败: {str(e)}")
                 results[module_id] = {"status": "error", "message": str(e)}
+                raise HTTPException(status_code=500, detail="卸载模块失败")
+
         
         # 如果所有模块都已卸载，删除整个环境
         modules_dir = overlay_tool.root_dir / "modules"
@@ -126,5 +129,6 @@ class OverlayService:
             except Exception as e:
                 logger.error(f"删除虚环境 {env_id} 失败: {str(e)}")
                 results["env_cleanup"] = {"status": "error", "message": str(e)}
+                raise HTTPException(status_code=500, detail="删除虚环境失败")
         
         return results
