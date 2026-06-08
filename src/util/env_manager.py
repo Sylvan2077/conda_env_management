@@ -98,13 +98,16 @@ class OverlayTool:
             # 卸载overlayfs
             self._unmount_overlayfs(merge_dir)
             
-            # 删除模块目录
-            import shutil
-            shutil.rmtree(module_dir, ignore_errors=True)
+            # 使用 rm -rf 删除模块目录（处理work目录权限问题）
+            # overlayfs挂载时会在work目录创建特殊文件，普通shutil.rmtree可能无法删除
+            subprocess.run(["rm", "-rf", str(module_dir)], check=True, capture_output=True)
             logger.success(f"Unmounted overlayfs for module {module_id} at {merge_dir}")
             return True
-        except Exception:
-            logger.error(f"Failed to unmount overlayfs for module {module_id} at {merge_dir}")
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to remove module directory {module_dir}: {e.stderr.decode()}")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to unmount overlayfs for module {module_id} at {merge_dir}: {str(e)}")
             return False
     
     def cleanup_task(self):
@@ -132,7 +135,7 @@ class OverlayTool:
         
         # 使用mount命令而不是fuse-overlayfs（更标准）
         cmd = [
-            "mount",
+            "sudo", "mount",
             "-t", "overlay",           # 文件系统类型
             "overlay",                 # source（必须写，通常就是 overlay）
             "-o", f"lowerdir={lower_str},upperdir={upper_dir},workdir={work_dir}",
@@ -152,7 +155,7 @@ class OverlayTool:
             merge_dir: 挂载点
         """
         # 使用unmount -l强制卸载
-        result = subprocess.run(["umount", "-l", str(merge_dir)], check=True, capture_output=True)
+        result = subprocess.run(["sudo", "umount", "-l", str(merge_dir)], check=True, capture_output=True)
         logger.info(f"Unmount command output: {result.stdout.decode()}")
         if result.returncode != 0:
             logger.error(f"Failed to unmount overlayfs for module at {merge_dir}: {result.stderr.decode()}")
