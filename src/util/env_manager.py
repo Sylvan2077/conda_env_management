@@ -117,8 +117,8 @@ class OverlayTool:
             shutil.rmtree(self.root_dir, ignore_errors=True)
             logger.success(f"Cleaned up task directory for task {self.task_id}")
             return True
-        except Exception:
-            logger.error(f"Failed to clean up task directory for task {self.task_id}")
+        except Exception as e:
+            logger.error(f"Failed to clean up task directory for task {self.task_id}: {str(e)}")
             return False
     
     def _mount_overlayfs(self, upper_dir: Path, work_dir: Path, merge_dir: Path, base_dir: Path):
