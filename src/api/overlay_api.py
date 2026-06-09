@@ -5,7 +5,11 @@ from src.service.overlay_service import OverlayService
 from src.util.log_manager import LoggerManager
 logger = LoggerManager(__name__)
 overlay_service = OverlayService()
-overlay_router = APIRouter()
+overlay_router = APIRouter(
+    prefix="",
+    tags=["overlay"],
+    responses={200: {"description": "Success"}},
+)
 
 @overlay_router.post("/create_overlay_env")
 async def create_overlay_env(request: CreateOverlayEnvRequest):

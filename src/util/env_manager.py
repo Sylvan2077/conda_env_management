@@ -1,5 +1,6 @@
 import subprocess
 import os
+import uuid
 from pathlib import Path
 from typing import List, Optional, Dict, Any
 from src.config.config import config
@@ -9,12 +10,13 @@ logger = LoggerManager(__name__)
 class OverlayTool:
     """overlayfs + conda 核心管理器"""
     
-    def __init__(self, task_id: str):
+    def __init__(self):
         """初始化overlay管理器
         
         Args:
-            task_id: 任务唯一标识符
+            task_id: 任务唯一标识符（可选，未提供时自动生成UUID）
         """
+        task_id = str(uuid.uuid4())
         self.task_id = task_id
         self.root_dir = config.workdir / task_id
         self.root_dir.mkdir(parents=True, exist_ok=True)
@@ -60,7 +62,7 @@ class OverlayTool:
         # 设置权限
         os.chmod(module_dir, 0o777)
         
-        # 在base目录下创建conda环境（实际项目中需要调用外部服务）
+        # 在base目录下创建conda环境（如果不存在）
         base_conda_path = self.root_dir / "base" / conda_env_name
         if not base_conda_path.exists():
             base_conda_path.mkdir(parents=True, exist_ok=True)
@@ -113,10 +115,19 @@ class OverlayTool:
     def cleanup_task(self):
         """清理整个任务目录"""
         try:
-            import shutil
-            shutil.rmtree(self.root_dir, ignore_errors=True)
+            # 先卸载所有模块的overlay
+            modules_dir = self.root_dir / "modules"
+            if modules_dir.exists():
+                for module_id in [item.name for item in modules_dir.iterdir() if item.is_dir()]:
+                    self.unmount_overlay_dirs(module_id)
+            
+            # 使用 rm -rf 删除任务目录（处理overlayfs work目录权限问题）
+            subprocess.run(["rm", "-rf", str(self.root_dir)], check=True, capture_output=True)
             logger.success(f"Cleaned up task directory for task {self.task_id}")
             return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"Failed to remove task directory {self.root_dir}: {e.stderr.decode()}")
+            return False
         except Exception as e:
             logger.error(f"Failed to clean up task directory for task {self.task_id}: {str(e)}")
             return False
@@ -133,7 +144,7 @@ class OverlayTool:
         # 构造lowerdir（只有base作为基础层）
         lower_str = str(base_dir)
         
-        # 使用mount命令而不是fuse-overlayfs（更标准）
+        # 使用sudo mount命令挂载overlayfs
         cmd = [
             "sudo", "mount",
             "-t", "overlay",           # 文件系统类型
@@ -154,7 +165,7 @@ class OverlayTool:
         Args:
             merge_dir: 挂载点
         """
-        # 使用unmount -l强制卸载
+        # 使用sudo unmount -l强制卸载
         result = subprocess.run(["sudo", "umount", "-l", str(merge_dir)], check=True, capture_output=True)
         logger.info(f"Unmount command output: {result.stdout.decode()}")
         if result.returncode != 0:
@@ -162,10 +173,10 @@ class OverlayTool:
             raise RuntimeError(f"overlayfs卸载失败: {result.stderr.decode()}")
     
     def _create_conda_env(self, env_name: str):
-        """创建conda环境（实际项目中需要调用外部服务）"""
+        """创建conda环境"""
         conda_cmd = [
             "conda", "create", "--prefix", str(self.root_dir / "base" / env_name),
-            "-y", "--quiet", "python=3.8"
+            "-y", "--quiet", "python=3"
         ]
         subprocess.run(conda_cmd, check=True, capture_output=True)
         logger.success(f"Created conda environment {env_name}")

@@ -2,6 +2,7 @@ import subprocess
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 
+from src.model.models import TaskModule, TaskParams
 from src.util.env_manager import OverlayTool
 from src.util.log_manager import LoggerManager
 
@@ -14,30 +15,27 @@ class TaskService:
     def __init__(self):
         """初始化TaskService。"""
         # 存储正在运行的任务进程，用于取消操作
-        self.running_tasks = {}  # key: env_id, value: dict with process info
-
+        self.running_tasks = {}
+    
     async def run_dag_task(
         self,
-        env_id: str,
-        module_ids: List[str],
-        task_params: Optional[Dict[str, Any]] = None
+        modules: List[TaskModule],
+        task_params: Optional[TaskParams] = None
     ) -> Dict[str, Any]:
         """
         通过基于DAG为多个模块创建、挂载和在overlayfs环境中执行命令来编排测试任务。
 
         参数:
-            env_id (str): 环境任务的唯一标识符。
-            module_ids (List[str]): 要处理的模块ID列表。
+            modules (List[TaskModule]): 模块列表，包含每个模块的ID和下游依赖。
             task_params (Dict[str, Any], 可选): 任务的额外参数，
                 包括'base_conda_env'和每个模块的命令。
 
         返回:
-            Dict[str, Any]: 包含每个模块的整体状态和结果的字典。
+            Dict[str, Any]: 包含环境ID、每个模块的整体状态和结果的字典。
         """
-        if task_params is None:
-            task_params = {}
-
-        overlay_tool = OverlayTool(task_id=env_id)
+        # 创建 OverlayTool，自动生成 env_id
+        overlay_tool = OverlayTool()
+        env_id = overlay_tool.task_id
         
         # 1. 初始化任务的目录结构
         try:
@@ -47,21 +45,30 @@ class TaskService:
             logger.error(f"为任务 '{env_id}' 初始化目录结构失败: {e}")
             return {"overall_status": "failed", "error": f"初始化目录失败: {e}"}
 
-        # DAG处理占位符:
-        # 在实际实现中，module_ids将根据它们的DAG依赖关系进行排序。
-        # 目前，我们按提供的顺序处理它们，模拟线性DAG或部分定义的DAG。
-        execution_order = module_ids
-        logger.info(f"按顺序处理模块: {execution_order} (DAG编排占位符)。")
+        # DAG处理: 根据依赖关系进行拓扑排序
+        execution_order = self._topological_sort(modules)
+        logger.info(f"按DAG顺序处理模块: {execution_order}。")
 
+        # 构建模块映射表
+        module_map = {m.module_id: m for m in modules}
+        
         results: Dict[str, Any] = {}
         mounted_modules: List[str] = []  # 跟踪成功挂载的模块
+        completed_modules: List[str] = []  # 跟踪已成功完成的模块
 
         try:
             # 从task_params确定基础conda环境名称，或使用默认值
-            base_conda_env_name = task_params.get("base_conda_env", "base_env")
+            base_conda_env_name = getattr(task_params, "base_conda_env", None) or "base_env"
             logger.info(f"使用基础conda环境: '{base_conda_env_name}'。")
 
             for module_id in execution_order:
+                # 检查上游依赖是否已完成
+                current_module = module_map[module_id]
+                if not self._check_upstream_dependencies(current_module, module_map, completed_modules):
+                    logger.warning(f"模块 '{module_id}' 的上游依赖未完成，跳过执行。")
+                    results[module_id] = {"status": "skipped", "reason": "上游依赖未完成"}
+                    continue
+                
                 logger.info(f"处理模块: '{module_id}'")
 
                 # 2. 为当前模块创建并挂载overlay环境
@@ -81,15 +88,12 @@ class TaskService:
                 # 3. 为当前模块执行任务命令
                 # 命令应在task_params中，以module_id为键。
                 # 如果未提供，使用默认的占位符命令。
-                module_command_str = task_params.get(module_id, f"echo '正在执行模块 {module_id} 的占位符任务'")
+                module_command_str = getattr(task_params, module_id, f"echo '正在执行模块 {module_id} 的占位符任务'")
                 logger.info(f"为模块 '{module_id}' 执行命令: '{module_command_str}' 在 '{merge_dir}'")
 
                 try:
                     # 在合并目录中执行命令。
-                    # 注意: 对于'conda install'或其他需要与overlayfs交互的conda特定命令，
-                    # 可能需要更复杂的方法，如'conda run --prefix'
-                    # 或source激活脚本。本示例使用基本的
-                    # subprocess.run并设置shell=True以灵活处理一般shell命令。
+                    # 使用subprocess.run并设置shell=True处理一般shell命令。
                     
                     process = subprocess.run(
                         module_command_str,
@@ -123,6 +127,9 @@ class TaskService:
                     error_message = f"为模块 '{module_id}' 执行命令时发生意外错误: {str(e)}"
                     logger.error(error_message)
                     results[module_id] = {"status": "failed", "error": error_message}
+                else:
+                    # 记录成功完成的模块
+                    completed_modules.append(module_id)
 
         except Exception as e:
             # 捕获循环期间可能阻止处理所有模块的任何异常
@@ -169,7 +176,87 @@ class TaskService:
         elif not failed_modules and not successful_modules and results:  # 如果逻辑正确，这不应该发生，但作为安全措施
              overall_status = "failed"  # 表示发生了某些错误，但每个模块都没有明确的失败状态
 
-        return {"overall_status": overall_status, "module_results": results}
+        return {"env_id": env_id, "overall_status": overall_status, "module_results": results}
+
+    def _topological_sort(self, modules: List[TaskModule]) -> List[str]:
+        """
+        基于DAG依赖关系进行拓扑排序。
+        
+        参数:
+            modules: 模块列表，每个模块包含 module_id 和 next_module_ids
+            
+        返回:
+            排序后的模块ID列表
+        """
+        # 构建依赖图: key=模块ID, value=依赖该模块的下游模块列表
+        dependency_graph: Dict[str, List[str]] = {}
+        in_degree: Dict[str, int] = {}  # 入度表
+        
+        # 初始化
+        for m in modules:
+            dependency_graph[m.module_id] = []
+            in_degree[m.module_id] = 0
+        
+        # 构建图
+        for m in modules:
+            if m.next_module_ids:
+                for next_id in m.next_module_ids:
+                    if next_id in dependency_graph:
+                        dependency_graph[m.module_id].append(next_id)
+                        in_degree[next_id] += 1
+        
+        # 拓扑排序
+        from collections import deque
+        queue = deque()
+        result = []
+        
+        # 将入度为0的节点加入队列（没有依赖的模块）
+        for module_id in in_degree:
+            if in_degree[module_id] == 0:
+                queue.append(module_id)
+        
+        while queue:
+            current = queue.popleft()
+            result.append(current)
+            
+            # 更新下游模块的入度
+            for neighbor in dependency_graph[current]:
+                in_degree[neighbor] -= 1
+                if in_degree[neighbor] == 0:
+                    queue.append(neighbor)
+        
+        # 如果存在环，抛出异常
+        if len(result) != len(modules):
+            raise ValueError("模块依赖图中存在循环依赖")
+        
+        return result
+
+    def _check_upstream_dependencies(self, current_module: TaskModule, module_map: Dict[str, TaskModule], 
+                                      completed_modules: List[str]) -> bool:
+        """
+        检查当前模块的上游依赖是否都已完成。
+        
+        参数:
+            current_module: 当前模块
+            module_map: 模块映射表
+            completed_modules: 已完成的模块列表
+            
+        返回:
+            如果所有上游依赖都已完成返回True，否则返回False
+        """
+        # 找到所有依赖当前模块的上游模块
+        upstream_modules = []
+        for mid, module in module_map.items():
+            if module.next_module_ids and current_module.module_id in module.next_module_ids:
+                upstream_modules.append(mid)
+        
+        # 检查所有上游模块是否都已完成
+        for upstream_id in upstream_modules:
+            if upstream_id not in completed_modules:
+                logger.info(f"模块 '{current_module.module_id}' 等待上游模块 '{upstream_id}' 完成")
+                return False
+        
+        return True
 
     async def cancel_task(self, env_id: str) -> Dict[str, Any]:
         """

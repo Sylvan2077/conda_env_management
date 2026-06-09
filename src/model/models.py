@@ -1,5 +1,5 @@
 from pydantic import BaseModel
-from typing import List
+from typing import List, Dict, Any, Optional
 
 class CreateOverlayEnvRequest(BaseModel):
     """创建虚环境请求"""
@@ -35,3 +35,17 @@ class OverlayEnvResponse(BaseModel):
     env_id: str
     message: str
     result: dict
+
+class TaskModule(BaseModel):
+    """任务模块定义（用于DAG编排）"""
+    module_id: str                          # 当前模块ID
+    next_module_ids: Optional[List[str]] = None  # 下游模块ID列表（依赖当前模块的模块）
+
+class TaskParams(BaseModel):
+    """任务参数"""
+    base_conda_env: Optional[str] = "base_env"  # 基础conda环境名称
+
+class StartTestTaskRequest(BaseModel):
+    """启动测试任务请求"""
+    modules: List[TaskModule]               # 模块列表，包含DAG依赖信息
+    task_params: Optional[TaskParams] = None

@@ -1,35 +1,35 @@
 from fastapi import APIRouter, HTTPException
-from typing import List, Dict, Any, Optional
+from src.model.models import StartTestTaskRequest
 from src.service.task_service import TaskService
 from src.util.log_manager import LoggerManager
 
 logger = LoggerManager(__name__)
 task_service = TaskService()
-task_router = APIRouter()
+task_router = APIRouter(
+    prefix="",
+    tags=["task"],
+    responses={200: {"description": "Success"}},
+)
 
 @task_router.post("/start_test_task")
-async def start_test_task(
-    env_id: str,
-    module_ids: List[str],
-    task_params: Optional[Dict[str, Any]] = None
-):
+async def start_test_task(request: StartTestTaskRequest):
     """
     启动一个测试任务，可包含多个具有DAG依赖关系的模块。
     参数:
-        env_id (str): 环境的唯一标识符。
-        module_ids (List[str]): 要包含在测试任务中的模块ID列表。
-        task_params (Dict[str, Any], 可选): 任务的额外参数。默认为None。
+        modules: 模块列表，每个模块包含module_id和下游依赖next_module_ids
+        task_params: 任务参数，包含：base_conda_env基础conda环境名称（可选）
     返回:
-        Dict[str, Any]: 包含任务状态和结果的字典。
+        Dict[str, Any]: 包含任务ID、状态和结果的字典。
     """
     try:
-        logger.info(f"启动测试任务，env_id: {env_id}, 模块: {module_ids}")
-        if task_params is None:
-            task_params = {}
+        modules = request.modules
+        task_params = request.task_params
+        
+        module_ids = [m.module_id for m in modules]
+        logger.info(f"启动测试任务，模块: {module_ids}")
         
         result = await task_service.run_dag_task(
-            env_id=env_id,
-            module_ids=module_ids,
+            modules=modules,
             task_params=task_params
         )
         

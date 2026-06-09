@@ -36,6 +36,4 @@ class LoggerManager:
 
     def success(self, message: str, *args, **kwargs):
         """记录成功消息。"""
-        # 自定义成功处理，如果需要可以使用不同样式
-        # 目前，使用INFO级别并添加"SUCCESS:"前缀
         self.logger.info(f"SUCCESS: {message}", *args, **kwargs)
